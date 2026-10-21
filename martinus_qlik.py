@@ -46,7 +46,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 APP_NAME = "MartinusQlik"
 SCRIPT_NAME = "martinus_qlik.py"
 TENANT = "38f4f961-e54b-4536-a1f8-6fbc2f81e4f6"
@@ -66,6 +66,7 @@ CODEX_CONFIG = Path(os.environ.get("MARTINUSQLIK_CODEX_CONFIG") or Path.home() /
 TOKENS = HOME / "tokens.dpapi"
 LOCK = HOME / "tokens.lock"
 LOG = HOME / "bridge.log"
+CACHE = HOME / "mcp_cache.json"   # výsledky initialize + tools/list (popisy nástrojov; žiadne tokeny ani dáta)
 SSL_CTX = ssl.create_default_context()
 
 
@@ -146,6 +147,35 @@ def load_tokens() -> dict | None:
     except Exception:
         log("tokens.dpapi: nedaju sa desifrovat (iny pouzivatel/PC?) — treba nove prihlasenie")
         return None
+
+
+# ---------------------------------------------------------------------------
+# Cache MCP metadát (initialize + tools/list)
+# Codex (od ~0.163) čaká na „optional" MCP server pri skladaní zoznamu nástrojov len
+# `mcp_optional_startup_grace_ms` = 1 s; initialize cez App Proxy trvá ~2–3 s → server by
+# vypadol zo zoznamu („omitting pending optional MCP server"). Preto most odpovedá na
+# initialize a tools/list okamžite z lokálnej cache a session na gatewayi založí v pozadí.
+# ---------------------------------------------------------------------------
+def load_cache() -> dict:
+    try:
+        c = json.loads(CACHE.read_text(encoding="utf-8"))
+        return c if isinstance(c, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_cache(**parts) -> None:
+    try:
+        c = load_cache()
+        c.update(parts)
+        c["version"] = VERSION
+        c["saved_at"] = datetime.now().isoformat(timespec="seconds")
+        HOME.mkdir(parents=True, exist_ok=True)
+        tmp = CACHE.with_suffix("." + secrets.token_hex(6) + ".tmp")
+        tmp.write_text(json.dumps(c, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, CACHE)
+    except OSError as e:
+        log(f"cache: zapis zlyhal ({e})")
 
 
 # ---------------------------------------------------------------------------
@@ -350,12 +380,19 @@ def _parse_sse(raw: bytes) -> list[dict]:
 
 
 def serve() -> None:
-    """stdio (Codex) ↔ HTTP (gateway). Každá správa vo vlastnom vlákne, stdout pod zámkom."""
+    """stdio (Codex) ↔ HTTP (gateway). initialize + notifications/initialized synchrónne (poradie),
+    ostatné správy vo vlastnom vlákne, stdout pod zámkom.
+    S cache: initialize a tools/list sa Codexu odpovedia okamžite z cache (viď load_cache),
+    session na gatewayi sa založí v pozadí; ostatné požiadavky počkajú, kým je session hotová."""
     global SERVE_MODE
     SERVE_MODE = True
     gw = Gateway()
+    cache = load_cache()
+    cached = bool(cache.get("initialize")) and bool(cache.get("tools"))
+    ready = threading.Event()          # initialize + initialized na gatewayi prebehli
     out_lock = threading.Lock()
     stdin, stdout = sys.stdin.buffer, sys.stdout.buffer
+    CACHEABLE = {"initialize": "initialize", "tools/list": "tools"}
 
     def emit(obj: dict) -> None:
         line = json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n"
@@ -363,22 +400,60 @@ def serve() -> None:
             stdout.write(line)
             stdout.flush()
 
-    def handle(msg: dict) -> None:
+    def forward(msg: dict, reply: bool = True) -> None:
+        """Pošle správu na gateway; odpovede odošle Codexu (reply=True) a cacheovateľné uloží."""
         try:
-            for reply in gw.post(msg):
-                emit(reply)
+            replies = gw.post(msg)
         except UserError as e:
             log(f"serve: {e}")
-            if "id" in msg:
+            if reply and "id" in msg:
                 emit({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32000, "message": str(e)}})
+            return
         except Exception as e:  # sieť / parse
             import traceback
             log(f"serve: {type(e).__name__}: {str(e)[:200]} | {traceback.format_exc()[-600:]}")
-            if "id" in msg:
+            if reply and "id" in msg:
                 emit({"jsonrpc": "2.0", "id": msg["id"],
                       "error": {"code": -32000, "message": f"Qlik gateway nedostupny ({type(e).__name__}). Skus znova; ak pretrvava, napis " + CONTACT}})
+            return
+        key = CACHEABLE.get(msg.get("method"))
+        for r in replies:
+            if key and r.get("id") == msg.get("id") and isinstance(r.get("result"), dict):
+                save_cache(**{key: r["result"]})
+            if reply:
+                emit(r)
 
-    log("serve start")
+    def gateway_session(init_msg: dict) -> None:
+        """Pozadie (cached režim): založí session na gatewayi a obnoví cache. Codex už má odpovede z cache."""
+        try:
+            forward(init_msg, reply=False)
+            forward({"jsonrpc": "2.0", "method": "notifications/initialized"}, reply=False)
+        finally:
+            ready.set()
+        forward({"jsonrpc": "2.0", "id": "martinusqlik-tools-refresh", "method": "tools/list"}, reply=False)
+
+    def handle(msg: dict) -> None:
+        method = msg.get("method")
+        if method == "initialize":
+            if cached:
+                emit({"jsonrpc": "2.0", "id": msg.get("id"), "result": cache["initialize"]})
+                threading.Thread(target=gateway_session, args=(msg,), daemon=True).start()
+            else:
+                forward(msg)           # prvý beh bez cache: synchrónne (Codex počká startup_timeout_sec)
+            return
+        if method == "notifications/initialized":
+            if not cached:             # v cached režime ju pošle gateway_session sám
+                forward(msg, reply=False)
+                ready.set()
+            return
+        if method == "tools/list" and cached and "id" in msg:
+            emit({"jsonrpc": "2.0", "id": msg["id"], "result": cache["tools"]})
+            return
+        if not ready.wait(90):
+            log(f"serve: gateway session nie je hotova ani po 90 s ({method})")
+        forward(msg)
+
+    log("serve start" + (" (cache: %d nastrojov z %s)" % (len(cache["tools"].get("tools", [])), cache.get("saved_at", "?")) if cached else " (bez cache)"))
     threads: list[threading.Thread] = []
     for raw in stdin:
         raw = raw.strip()
@@ -391,8 +466,8 @@ def serve() -> None:
             continue
         msgs = msg if isinstance(msg, list) else [msg]
         for m in msgs:
-            if m.get("method") == "initialize":
-                handle(m)          # synchrónne — session id musí byť známy pred ďalšími správami
+            if m.get("method") in ("initialize", "notifications/initialized"):
+                handle(m)          # synchrónne — poradie initialize → initialized → ostatné
             else:
                 t = threading.Thread(target=handle, args=(m,), daemon=True)
                 t.start()
@@ -415,6 +490,8 @@ def verify() -> None:
         gw.post({"jsonrpc": "2.0", "method": "notifications/initialized"}, timeout=60)
         tools = gw.post({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, timeout=60)
         n_tools = len(tools[0].get("result", {}).get("tools", [])) if tools else 0
+        if n_tools and isinstance(init[0].get("result"), dict):
+            save_cache(initialize=init[0]["result"], tools=tools[0]["result"])   # most potom odpovedá Codexu okamžite
         res = gw.post({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                        "params": {"name": "qlik_list_streams", "arguments": {}}}, timeout=120)
         result = res[0].get("result", {}) if res else {}
@@ -443,12 +520,13 @@ def verify() -> None:
 # ---------------------------------------------------------------------------
 _SECTION_RE = re.compile(r"^\s*\[\s*mcp_servers\.(?:\"qlik\"|qlik)(?:\.[^\]]*)?\]\s*$")
 _ANY_HEADER_RE = re.compile(r"^\s*\[")
+_OUR_COMMENT_RE = re.compile(r"^\s*#\s*Martinus Qlik most\b")
 
 
 def _strip_qlik_sections(text: str) -> str:
     out, skipping = [], False
     for line in text.splitlines(keepends=True):
-        if _SECTION_RE.match(line):
+        if _SECTION_RE.match(line) or _OUR_COMMENT_RE.match(line):
             skipping = True
             continue
         if skipping and _ANY_HEADER_RE.match(line):
@@ -501,7 +579,8 @@ def write_config(python: Path, script: Path) -> None:
         f"args = [{_toml_str(str(script))}, \"serve\"]\n"
         f"startup_timeout_sec = 120\n"
         f"tool_timeout_sec = 300\n"
-        f"default_tools_approval_mode = \"auto\"\n"
+        f"default_tools_approval_mode = \"approve\"\n"   # = bez schvaľovacích otázok (rola na gatewayi je readonly); "auto"/"writes" sa pýtajú
+
         f"\n[mcp_servers.{SERVER_KEY}.env]\n"
         f"PYTHONUTF8 = \"1\"\n"
     )
@@ -511,7 +590,7 @@ def write_config(python: Path, script: Path) -> None:
         assert parsed["mcp_servers"][SERVER_KEY]["args"][1] == "serve"
     except Exception as e:  # nikdy nezapisat nevalidny config (MS Store appka by sa zasekla na starte)
         raise UserError(f"Interna chyba pri generovani configu ({e}) — napis " + CONTACT + ".")
-    CODEX_CONFIG.write_text(new, encoding="utf-8")
+    CODEX_CONFIG.write_text(new, encoding="utf-8", newline="\n")   # Codex píše LF; nemeniť konce riadkov
     say(f"Codex config zapisany: {CODEX_CONFIG}")
     log("config written")
 
@@ -569,6 +648,8 @@ def cmd_status() -> None:
     else:
         left = int(t.get("expires_at", 0) - time.time())
         say(f"Prihlasenie: ano, access token {'platny este ' + str(left // 60) + ' min' if left > 0 else 'expirovany (obnovi sa refresh tokenom pri dalsom volani)'}; refresh token: {'ano' if t.get('refresh_token') else 'NIE'}")
+    c = load_cache()
+    say(f"Cache nastrojov: {str(len(c['tools'].get('tools', []))) + ' nastrojov z ' + str(c.get('saved_at', '?')) if c.get('tools') and c.get('initialize') else 'NIE (vytvori ju verify/setup; bez nej Codex nemusi most stihnut)'}")
 
 
 def cmd_uninstall() -> None:
@@ -577,10 +658,10 @@ def cmd_uninstall() -> None:
         tomllib.loads(new)
         CODEX_CONFIG.write_text(new, encoding="utf-8")
         say("Sekcia [mcp_servers.qlik] odstranena z Codex configu.")
-    for f in (TOKENS, LOCK):
+    for f in (TOKENS, LOCK, CACHE):
         if f.exists():
             f.unlink()
-    say("Tokeny zmazane. Priecinok " + str(HOME) + " mozes zmazat rucne.")
+    say("Tokeny a cache zmazane. Priecinok " + str(HOME) + " mozes zmazat rucne.")
 
 
 def main(argv: list[str]) -> int:
