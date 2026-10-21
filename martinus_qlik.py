@@ -47,7 +47,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 APP_NAME = "MartinusQlik"
 SCRIPT_NAME = "martinus_qlik.py"
 TENANT = "38f4f961-e54b-4536-a1f8-6fbc2f81e4f6"
@@ -580,7 +580,7 @@ def install_self() -> Path:
 
 def write_config(python: Path, script: Path) -> None:
     CODEX_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    old = CODEX_CONFIG.read_text(encoding="utf-8") if CODEX_CONFIG.exists() else ""
+    old = CODEX_CONFIG.read_text(encoding="utf-8-sig") if CODEX_CONFIG.exists() else ""
     if old:
         try:
             tomllib.loads(old)
@@ -614,7 +614,7 @@ def config_state() -> str:
     if not CODEX_CONFIG.exists():
         return "chyba (config.toml neexistuje)"
     try:
-        srv = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8")).get("mcp_servers", {}).get(SERVER_KEY)
+        srv = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8-sig")).get("mcp_servers", {}).get(SERVER_KEY)
     except tomllib.TOMLDecodeError:
         return "config.toml NIE JE platny TOML"
     if not srv:
@@ -669,7 +669,7 @@ def cmd_status() -> None:
 
 def cmd_uninstall() -> None:
     if CODEX_CONFIG.exists():
-        new = _strip_qlik_sections(CODEX_CONFIG.read_text(encoding="utf-8"))
+        new = _strip_qlik_sections(CODEX_CONFIG.read_text(encoding="utf-8-sig"))
         tomllib.loads(new)
         CODEX_CONFIG.write_text(new, encoding="utf-8")
         say("Sekcia [mcp_servers.qlik] odstranena z Codex configu.")
