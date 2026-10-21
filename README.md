@@ -70,4 +70,4 @@ Ak by Codex config nešiel zapísať (firemná politika), server sa dá pridať 
 Overené 2026-10-21 (v2.2.0): ChatGPT/Codex appka 26.1013 (codex 0.163), Codex Python 3.12.14, 53 nástrojov,
 `codex exec` vráti zoznam Qlik streamov v čistom aj plnom configu.
 
-Kontakt: Daniel Križan (daniel.krizan@martinus.sk).
+Kontakt: Daniel Križan (Workvivo).

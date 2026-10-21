@@ -59,7 +59,7 @@ REDIRECT = f"http://localhost:{REDIRECT_PORT}/callback"
 REMOTE_HOST = "qlikmcp.martinus.sk"
 REMOTE = f"https://{REMOTE_HOST}/mcp"
 SERVER_KEY = "qlik"
-CONTACT = "Daniel Krizan (Workvivo / daniel.krizan@martinus.sk)"
+CONTACT = "Daniel Krizan (Workvivo)"
 CODEX_PYTHON = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "python.exe"
 
 # Domovský priečinok mosta je pod %USERPROFILE%, NIE pod %LOCALAPPDATA%: Store (MSIX) appky — ChatGPT/Codex
