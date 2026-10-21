@@ -47,7 +47,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 APP_NAME = "MartinusQlik"
 SCRIPT_NAME = "martinus_qlik.py"
 TENANT = "38f4f961-e54b-4536-a1f8-6fbc2f81e4f6"
@@ -520,6 +520,11 @@ def verify() -> None:
             names = []
     except UserError:
         raise
+    except PermissionError as e:
+        log(f"verify failed: PermissionError {str(e)[:200]}")
+        raise UserError("Skript nema povoleny zapis do " + str(HOME) + " — pravdepodobne bezi v chranenom rezime "
+                        "(Codex sandbox). Spusti ten isty prikaz v PowerShelli (Win+R -> powershell); "
+                        "ak si uz videl HOTOVO, instalacia presla a staci restartovat ChatGPT appku.")
     except Exception as e:
         msg = f"{type(e).__name__}: {str(e)[:200]}"
         log(f"verify failed: {msg}")

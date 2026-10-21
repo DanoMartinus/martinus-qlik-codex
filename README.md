@@ -7,21 +7,22 @@ Pythone, ktorý si Codex nosí so sebou, takže sa nič neinštaluje. Prihlásen
 
 ## Inštalácia (bežný používateľ)
 
-Otvor ChatGPT appku → Codex → vlož master prompt z interného návodu
-(„Qlik dáta v ChatGPT (Codex) — inštalačný návod"). Codex si súbor stiahne, nastaví a otvorí
-Microsoft prihlásenie. Nič viac netreba.
+Interný návod „Qlik MCP Inštalačný návod ChatGPT/Codex (Windows)" = jeden riadok do PowerShellu
+(Win + R → `powershell` → vložiť → Enter), potom Microsoft prihlásenie a reštart ChatGPT appky:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; $d="$env:USERPROFILE\.martinus-qlik"; New-Item -ItemType Directory -Force $d | Out-Null; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/martinus_qlik.py -OutFile "$d\martinus_qlik.py"; & "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" "$d\martinus_qlik.py" setup
+```
+
+⚠️ Inštaláciu nerob cez Codex samotný: jeho sandbox nemá prístup na internet ani zápis mimo otvoreného
+priečinka (aj proces spustený cez `Start-Process` dedí obmedzenia), takže `setup`/`verify` v ňom padnú na
+`Access denied` / `PermissionError: tokens.lock`. Most ako MCP server appka spúšťa mimo sandboxu, ten funguje.
 
 ChatGPT appka pre Windows je v Microsoft Store (ID `9PLM9XGG6VKS`,
 `winget install --id 9PLM9XGG6VKS -s msstore`). Staršia samostatná „Codex" appka sa aktualizáciou
 zmení na túto ChatGPT appku (Chat / Work / Codex).
 
-## Inštalácia ručne (technický používateľ)
-
-```powershell
-$dir = "$env:USERPROFILE\.martinus-qlik"; New-Item -ItemType Directory -Force $dir | Out-Null
-Invoke-WebRequest https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/martinus_qlik.py -OutFile "$dir\martinus_qlik.py"
-& "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" "$dir\martinus_qlik.py" setup
-```
+## Príkazy skriptu
 
 `setup` zapíše `[mcp_servers.qlik]` do `%USERPROFILE%\.codex\config.toml` (staré `qlik` sekcie
 odstráni, ostatné zachová, zálohuje do `config.toml.bak-MartinusQlik`), prihlási cez Microsoft,
@@ -61,6 +62,7 @@ Ak by Codex config nešiel zapísať (firemná politika), server sa dá pridať 
 |---|---|
 | Qlik v Codexe zmizol (appka si po update prepísala config) | spusti `setup` znova (prihlásenie si pamätá) |
 | V appke je server `qlik` červený / „connection closed: initialize response“ | skript nie je na ceste z configu (napr. inštalácia z inej Store appky do virtualizovaného AppData\Local, verzie ≤ 2.1) → spusti `setup` znova z v2.2+ |
+| `PermissionError: tokens.lock` / `Access denied` pri setup alebo verify | príkaz bežal v Codex sandboxe → spusti ho v PowerShelli (Win+R); ak už bolo HOTOVO, len reštartuj appku |
 | Codex píše, že nástroj `qlik_…` nie je dostupný | spusti `verify` (obnoví cache) a appku úplne reštartuj; `status` musí hlásiť „Cache nastrojov: …" |
 | Codex sa pri každom Qlik volaní pýta na schválenie | v `config.toml` chýba `default_tools_approval_mode = "approve"` → spusti `setup` znova |
 | `AADSTS50105` pri prihlásení | účet nie je v prístupovej skupine, napíš správcovi (Daniel Križan) |
