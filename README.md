@@ -18,7 +18,7 @@ zmení na túto ChatGPT appku (Chat / Work / Codex).
 ## Inštalácia ručne (technický používateľ)
 
 ```powershell
-$dir = "$env:LOCALAPPDATA\MartinusQlik"; New-Item -ItemType Directory -Force $dir | Out-Null
+$dir = "$env:USERPROFILE\.martinus-qlik"; New-Item -ItemType Directory -Force $dir | Out-Null
 Invoke-WebRequest https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/martinus_qlik.py -OutFile "$dir\martinus_qlik.py"
 & "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" "$dir\martinus_qlik.py" setup
 ```
@@ -40,15 +40,19 @@ Ak by Codex config nešiel zapísať (firemná politika), server sa dá pridať 
   `https://qlikmcp.martinus.sk/mcp`, odpovede (JSON/SSE) vráti späť. Po reštarte gatewayu session
   ticho obnoví.
 - Na `initialize` a `tools/list` odpovie Codexu okamžite z lokálnej cache
-  (`%LOCALAPPDATA%\MartinusQlik\mcp_cache.json` — len popisy nástrojov, žiadne tokeny ani dáta)
+  (`%USERPROFILE%\.martinus-qlik\mcp_cache.json` — len popisy nástrojov, žiadne tokeny ani dáta)
   a session na gatewayi založí v pozadí. Dôvod: Codex čaká na „optional" MCP server pri skladaní
   zoznamu nástrojov len 1 s (`mcp_optional_startup_grace_ms`), spojenie cez App Proxy trvá 2–3 s —
   bez cache by Qlik nástroje v Codexe chýbali, hoci server beží. Cache vytvorí `verify`/`setup`
   a každý štart ju obnoví.
 - Nástroje sú v configu nastavené na `default_tools_approval_mode = "approve"` (bez schvaľovacích
   otázok); `auto`/`writes` sa pri Qlik nástrojoch pýtajú pri každom volaní.
+- Všetko (skript, tokeny, cache, log) je v `%USERPROFILE%\.martinus-qlik`, zámerne NIE v `AppData\Local`:
+  Store (MSIX) appky ako ChatGPT/Codex alebo Claude presmerúvajú zápisy do `AppData\Local` do vlastného
+  `Packages\…\LocalCache`, takže súbor nainštalovaný z jednej appky druhá nevidí (most potom padne na
+  „connection closed: initialize response“). `%USERPROFILE%` sa nevirtualizuje (preto funguje aj `~/.codex`).
 - Token ide výlučne na ten jeden host. Kódy, tokeny ani dáta sa nelogujú
-  (`%LOCALAPPDATA%\MartinusQlik\bridge.log` obsahuje len stavové riadky).
+  (`%USERPROFILE%\.martinus-qlik\bridge.log` obsahuje len stavové riadky).
 - Nič sa nezapisuje do Qliku: rola používateľa na gatewayi je len na čítanie.
 
 ## Riešenie problémov
@@ -56,13 +60,14 @@ Ak by Codex config nešiel zapísať (firemná politika), server sa dá pridať 
 | Príznak | Čo s tým |
 |---|---|
 | Qlik v Codexe zmizol (appka si po update prepísala config) | spusti `setup` znova (prihlásenie si pamätá) |
+| V appke je server `qlik` červený / „connection closed: initialize response“ | skript nie je na ceste z configu (napr. inštalácia z inej Store appky do virtualizovaného AppData\Local, verzie ≤ 2.1) → spusti `setup` znova z v2.2+ |
 | Codex píše, že nástroj `qlik_…` nie je dostupný | spusti `verify` (obnoví cache) a appku úplne reštartuj; `status` musí hlásiť „Cache nastrojov: …" |
 | Codex sa pri každom Qlik volaní pýta na schválenie | v `config.toml` chýba `default_tools_approval_mode = "approve"` → spusti `setup` znova |
 | `AADSTS50105` pri prihlásení | účet nie je v prístupovej skupine, napíš správcovi (Daniel Križan) |
 | `Port 8975 je obsadeny` | beží iné prihlásenie (napr. Claude Code), zavri ho a opakuj |
 | `ziadne streamy` | Qlik účet nemá prístup na aplikácie, napíš správcovi |
 
-Overené 2026-10-21: ChatGPT/Codex appka 26.1013 (codex 0.163), Codex Python 3.12.14, 53 nástrojov,
+Overené 2026-10-21 (v2.2.0): ChatGPT/Codex appka 26.1013 (codex 0.163), Codex Python 3.12.14, 53 nástrojov,
 `codex exec` vráti zoznam Qlik streamov v čistom aj plnom configu.
 
 Kontakt: Daniel Križan (daniel.krizan@martinus.sk).

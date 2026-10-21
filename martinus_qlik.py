@@ -15,7 +15,8 @@ Režimy:
 
 Autentifikácia: Entra ID public client (ten istý ako Claude Code plugin) — PKCE,
 redirect http://localhost:8975/callback, GUID scope, refresh token. Tokeny šifruje Windows
-DPAPI (len tento používateľ na tomto PC) v %LOCALAPPDATA%\\MartinusQlik\\tokens.dpapi.
+DPAPI (len tento používateľ na tomto PC) v %USERPROFILE%\\.martinus-qlik\\tokens.dpapi
+(nie AppData\\Local — Store appky ho virtualizujú per appka, viď komentár pri HOME).
 Access token ide VÝLUČNE na https://qlikmcp.martinus.sk (App Proxy → gateway → Qlik ACL
 používateľa). Kódy/tokeny sa nikdy nelogujú.
 
@@ -46,7 +47,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 APP_NAME = "MartinusQlik"
 SCRIPT_NAME = "martinus_qlik.py"
 TENANT = "38f4f961-e54b-4536-a1f8-6fbc2f81e4f6"
@@ -61,7 +62,12 @@ SERVER_KEY = "qlik"
 CONTACT = "Daniel Krizan (Workvivo / daniel.krizan@martinus.sk)"
 CODEX_PYTHON = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "python.exe"
 
-HOME = Path(os.environ.get("MARTINUSQLIK_HOME") or Path(os.environ.get("LOCALAPPDATA", Path.home())) / APP_NAME)
+# Domovský priečinok mosta je pod %USERPROFILE%, NIE pod %LOCALAPPDATA%: Store (MSIX) appky — ChatGPT/Codex
+# aj Claude — presmerúvajú zápisy do AppData\Local do vlastného Packages\...\LocalCache, takže súbor
+# zapísaný z jednej appky druhá (ani Python spustený z nej) nevidí. %USERPROFILE% sa nevirtualizuje
+# (rovnaký dôvod, prečo Codex používa ~/.codex).
+HOME = Path(os.environ.get("MARTINUSQLIK_HOME") or Path.home() / ".martinus-qlik")
+LEGACY_HOME = Path(os.environ.get("LOCALAPPDATA", Path.home())) / APP_NAME   # v2.0/2.1 — len migrácia tokenov
 CODEX_CONFIG = Path(os.environ.get("MARTINUSQLIK_CODEX_CONFIG") or Path.home() / ".codex" / "config.toml")
 TOKENS = HOME / "tokens.dpapi"
 LOCK = HOME / "tokens.lock"
@@ -141,7 +147,16 @@ def save_tokens(tokens: dict, previous: dict | None = None) -> None:
 
 def load_tokens() -> dict | None:
     if not TOKENS.exists():
-        return None
+        legacy = LEGACY_HOME / TOKENS.name
+        if legacy.exists():
+            try:
+                HOME.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(legacy, TOKENS)
+                log(f"tokens migrovane z {legacy}")
+            except OSError:
+                return None
+        else:
+            return None
     try:
         return json.loads(_dpapi(TOKENS.read_bytes(), protect=False))
     except Exception:
