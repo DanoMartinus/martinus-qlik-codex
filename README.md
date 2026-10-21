@@ -11,7 +11,7 @@ Interný návod „Qlik MCP Inštalačný návod ChatGPT/Codex (Windows)" = jede
 (Win + R → `powershell` → vložiť → Enter), potom Microsoft prihlásenie a reštart ChatGPT appky:
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol='Tls12'; $d="$env:USERPROFILE\.martinus-qlik"; New-Item -ItemType Directory -Force $d | Out-Null; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/martinus_qlik.py -OutFile "$d\martinus_qlik.py"; & "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" "$d\martinus_qlik.py" setup
+cd ~; [Net.ServicePointManager]::SecurityProtocol='Tls12'; New-Item -ItemType Directory -Force .martinus-qlik | Out-Null; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/martinus_qlik.py -OutFile .martinus-qlik\martinus_qlik.py; & .cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe .martinus-qlik\martinus_qlik.py setup
 ```
 
 ⚠️ Inštaláciu nerob cez Codex samotný: jeho sandbox nemá prístup na internet ani zápis mimo otvoreného
