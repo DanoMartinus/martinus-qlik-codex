@@ -7,8 +7,19 @@ Pythone, ktorý si Codex nosí so sebou, takže sa nič neinštaluje. Prihlásen
 
 ## Inštalácia (bežný používateľ)
 
-Interný návod „Qlik MCP Inštalačný návod ChatGPT/Codex (Windows)" = jeden riadok do PowerShellu
+Interný návod „Qlik MCP Inštalačný návod ChatGPT/Codex (Windows)“ = jeden príkaz do PowerShellu
 (Win + R → `powershell` → vložiť → Enter), potom Microsoft prihlásenie a reštart ChatGPT appky:
+
+```powershell
+irm https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/setup.ps1 | iex
+```
+
+`setup.ps1` vytvorí `%USERPROFILE%\.martinus-qlik`, stiahne `martinus_qlik.py`, nájde Python z ChatGPT/Codex
+appky (`%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe`; ten si appka
+stiahne sama pri prvom otvorení Codexu, Python netreba inštalovať) a spustí `setup`. Bez Codex Pythonu skúsi
+bežný `python` (nie Store alias), inak vypíše, čo spraviť.
+
+Dlhá alternatíva bez `setup.ps1` (rovnaký efekt):
 
 ```powershell
 cd ~; [Net.ServicePointManager]::SecurityProtocol='Tls12'; New-Item -ItemType Directory -Force .martinus-qlik | Out-Null; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/DanoMartinus/martinus-qlik-codex/main/martinus_qlik.py -OutFile .martinus-qlik\martinus_qlik.py; & .cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe .martinus-qlik\martinus_qlik.py setup
@@ -17,10 +28,11 @@ cd ~; [Net.ServicePointManager]::SecurityProtocol='Tls12'; New-Item -ItemType Di
 ⚠️ Inštaláciu nerob cez Codex samotný: jeho sandbox nemá prístup na internet ani zápis mimo otvoreného
 priečinka (aj proces spustený cez `Start-Process` dedí obmedzenia), takže `setup`/`verify` v ňom padnú na
 `Access denied` / `PermissionError: tokens.lock`. Most ako MCP server appka spúšťa mimo sandboxu, ten funguje.
+Príkaz neposielaj v tele mailu (zalomí sa a PowerShell ho vykoná po častiach), odkazuj na návod.
 
 ChatGPT appka pre Windows je v Microsoft Store (ID `9PLM9XGG6VKS`,
-`winget install --id 9PLM9XGG6VKS -s msstore`). Staršia samostatná „Codex" appka sa aktualizáciou
-zmení na túto ChatGPT appku (Chat / Work / Codex).
+`winget install --id 9PLM9XGG6VKS -s msstore`); na firemnom notebooku si inštalácia vypýta schválenie správcu (Allit).
+Staršia samostatná „Codex“ appka sa aktualizáciou zmení na túto ChatGPT appku (Chat / Work / Codex).
 
 ## Príkazy skriptu
 
