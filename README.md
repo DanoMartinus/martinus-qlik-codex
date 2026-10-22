@@ -32,7 +32,7 @@ Príkaz neposielaj v tele mailu (zalomí sa a PowerShell ho vykoná po častiach
 
 ChatGPT appka pre Windows je v Microsoft Store (ID `9PLM9XGG6VKS`,
 `winget install --id 9PLM9XGG6VKS -s msstore`); na firemnom notebooku si inštalácia vypýta schválenie správcu (Allit).
-Staršia samostatná „Codex“ appka sa aktualizáciou zmení na túto ChatGPT appku (Chat / Work / Codex).
+Staršia samostatná „Codex“ appka sa aktualizáciou zmení na túto ChatGPT appku (Codex = šípka vedľa názvu vľavo hore).
 
 ## Príkazy skriptu
 
